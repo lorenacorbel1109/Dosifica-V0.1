@@ -1,3 +1,4 @@
+import React from 'react';
 
 const VARIABLE_TYPES = ['number', 'string', 'select', 'multiselect'];
 

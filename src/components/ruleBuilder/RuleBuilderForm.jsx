@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMemo, useState } from 'react';
 import ClinicalVariableEditor from './ClinicalVariableEditor.jsx';
 import ConditionGroupBuilder from './ConditionGroupBuilder.jsx';

@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   OPERATOR_OPTIONS,
   createEmptyCondition,

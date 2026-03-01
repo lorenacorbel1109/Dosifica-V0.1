@@ -1,3 +1,4 @@
+import React from 'react';
 import styles from './MainLayout.module.css';
 import { useMediaQuery } from '../hooks/useMediaQuery.js';
 

@@ -1,3 +1,4 @@
+import React from 'react';
 
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Estado general', icon: '📊', tooltip: 'Resumen del estado clínico del sistema' },
