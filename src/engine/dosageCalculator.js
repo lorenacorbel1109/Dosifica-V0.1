@@ -395,6 +395,48 @@ export const calculateDosage = (doseDefinition, patientData = {}) => {
     });
   }
 
+  const formulaCandidate = cleaned
+    // Remueve unidades de texto para permitir evaluar expresiones mixtas como "10 mg * peso / 0"
+    .replace(/\b(?:mg|ml|mcg|g|ui|mEq|mmol|drops?)\b/gi, '')
+    .replace(/\s+/g, '');
+
+  if (formulaCandidate && /[\d)a-zA-Z_]/.test(formulaCandidate)) {
+    try {
+      const value = Number(evaluateSafeFormula(formulaCandidate, {
+        peso,
+        edad,
+        talla,
+        superficie,
+        imc,
+        creatinina,
+        mgPorKg: 0,
+        dosisMaxima: 0,
+      }).toFixed(2));
+
+      return buildDosageResult({
+        dosisFinal: value,
+        frecuencia: '',
+        advertenciaSiAplica: '',
+        unit: '',
+        description: `${value} (calculado por fórmula)`,
+        ageGroup,
+        superficieUsed: legacyUsesSuperficie,
+        superficie,
+      });
+    } catch (error) {
+      return buildDosageResult({
+        dosisFinal: null,
+        frecuencia: '',
+        advertenciaSiAplica: error.message,
+        unit: '',
+        description: `No se pudo interpretar la fórmula: "${doseDefinition}"`,
+        ageGroup,
+        superficieUsed: legacyUsesSuperficie,
+        superficie,
+      });
+    }
+  }
+
   return buildDosageResult({
     dosisFinal: null,
     frecuencia: '',

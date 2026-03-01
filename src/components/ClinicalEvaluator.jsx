@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useClinicalEngine from '../hooks/useClinicalEngine.js';
 import { useClinicalStore } from '../store/clinicalStore.jsx';
 import { useEstablishmentsStore } from '../store/establishmentsStore.jsx';
@@ -11,6 +11,12 @@ import { useAppModeStore } from '../store/appModeStore.jsx';
 import Card from './Card.jsx';
 import SeverityBadge from './SeverityBadge.jsx';
 import { useDebounce } from '../hooks/useDebounce.js';
+import { setNestedValue } from '../utils/helpers.js';
+import { PATHOLOGY_CATEGORIES, PATHOLOGY_TEMPLATES } from '../data/pathologyTemplates.js';
+import { useMediaQuery } from '../hooks/useMediaQuery.js';
+import ClinicalFlowchart from './flowchart/ClinicalFlowchart.jsx';
+import useMemoizedEngine from '../hooks/useMemoizedEngine.js';
+import styles from './ClinicalEvaluator.module.css';
 
 const SIGN_OPTIONS = [
   'mucosas secas',
@@ -23,15 +29,34 @@ const SIGN_OPTIONS = [
   'sed intensa',
 ];
 
+const PATHOLOGY_ICONS = {
+  deshidratacion: '💧',
+  dengue: '🦟',
+  ira_neumonia: '🫁',
+  crisis_hipertensiva: '🫀',
+  convulsion: '⚡',
+  anemia: '🩸',
+  desnutricion: '🍽️',
+  eda: '🚰',
+  ira_alta: '🤧',
+  itu: '🧫',
+  hipertension: '📈',
+  diabetes: '🍬',
+  parasitosis: '🪱',
+  tuberculosis_screening: '🫧',
+  salud_materna: '🤰',
+};
+
 const createInitialPatient = () => ({
   edad: '',
   peso: '',
   sexo: 'F',
   selectedSigns: [],
   labRows: [
-    { key: 'hemoglobina', value: '' },
-    { key: 'sodio', value: '' },
+    { id: crypto.randomUUID(), key: 'hemoglobina', value: '' },
+    { id: crypto.randomUUID(), key: 'sodio', value: '' },
   ],
+  dynamicValues: {},
 });
 
 const normalizeLabRows = (rows) =>
@@ -50,17 +75,15 @@ const normalizeLabRows = (rows) =>
     return accumulator;
   }, {});
 
-/**
- * Evaluador clínico optimizado para ingreso rápido y lectura inmediata.
- */
 const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
-  const { rules, evaluableRules, activeNtsVersion } = useClinicalStore();
+  const { evaluableRules, activeNtsVersion } = useClinicalStore();
   const { activeEstablishment, inventoryForActiveEstablishment } = useEstablishmentsStore();
   const { activeNationalMedications } = useNationalMedicationsStore();
   const { addAuditEntries, addResponsibilityAcceptance, auditLogs } = useAuditStore();
   const { addDecision } = useDecisionLogStore();
-  const { isSimulation, isProduction } = useAppModeStore();
+  const { isSimulation, isProduction, operatorId } = useAppModeStore();
   const { evaluatePatient } = useClinicalEngine(evaluableRules);
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const [patientForm, setPatientForm] = useState(createInitialPatient());
   const [results, setResults] = useState([]);
@@ -69,9 +92,36 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
   const [responsibilityAccepted, setResponsibilityAccepted] = useState(false);
   const [signSearch, setSignSearch] = useState('');
   const [decisionMessage, setDecisionMessage] = useState('');
+  const [selectedPathology, setSelectedPathology] = useState('ALL');
+  const [showPathologyStep, setShowPathologyStep] = useState(true);
+  const [resultView, setResultView] = useState('form');
+  const [flowchartSelection, setFlowchartSelection] = useState(null);
+  const [manualResultOverride, setManualResultOverride] = useState(null);
 
-  const patientPreview = useMemo(
-    () => ({
+  const pathologyScopedRules = useMemo(() => {
+    if (selectedPathology === 'ALL') return evaluableRules;
+    return evaluableRules.filter((rule) => (rule.pathology || rule.pathologyId) === selectedPathology);
+  }, [evaluableRules, selectedPathology]);
+
+  useEffect(() => {
+    setFlowchartSelection(null);
+    setManualResultOverride(null);
+  }, [selectedPathology]);
+
+  const unifiedVariables = useMemo(() => {
+    const uniqueByKey = new Map();
+    pathologyScopedRules.forEach((rule) => {
+      if (!Array.isArray(rule?.clinicalVariables)) return;
+      rule.clinicalVariables.forEach((variable) => {
+        if (!variable?.key || uniqueByKey.has(variable.key)) return;
+        uniqueByKey.set(variable.key, variable);
+      });
+    });
+    return Array.from(uniqueByKey.values());
+  }, [pathologyScopedRules]);
+
+  const patientPreview = useMemo(() => {
+    const preview = {
       edad: Number(patientForm.edad || 0),
       peso: Number(patientForm.peso || 0),
       sexo: patientForm.sexo,
@@ -84,17 +134,57 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
       equiposDisponibles: activeEstablishment?.equipmentAvailable || [],
       nationalMedications: activeNationalMedications || [],
       establishmentInventory: inventoryForActiveEstablishment || [],
-    }),
-    [patientForm, activeEstablishment, activeNationalMedications, inventoryForActiveEstablishment],
-  );
+    };
+
+    unifiedVariables.forEach((variable) => {
+      const rawValue = patientForm.dynamicValues?.[variable.key];
+      if (rawValue === undefined || rawValue === null || rawValue === '') return;
+      if (!variable.path) return;
+
+      let normalizedValue = rawValue;
+      if (variable.type === 'number') {
+        const numericValue = Number(rawValue);
+        if (Number.isNaN(numericValue)) return;
+        normalizedValue = numericValue;
+      }
+
+      setNestedValue(preview, variable.path, normalizedValue);
+    });
+
+    return preview;
+  }, [
+    patientForm,
+    activeEstablishment,
+    activeNationalMedications,
+    inventoryForActiveEstablishment,
+    unifiedVariables,
+  ]);
 
   const debouncedPatientPreview = useDebounce(patientPreview, 350);
+  const memoizedEngine = useMemoizedEngine({
+    rules: evaluableRules,
+    patientData: debouncedPatientPreview,
+    unmetPolicy,
+  });
 
   const filteredSignOptions = useMemo(() => {
     const query = signSearch.trim().toLowerCase();
     if (!query) return SIGN_OPTIONS;
     return SIGN_OPTIONS.filter((sign) => sign.toLowerCase().includes(query));
   }, [signSearch]);
+
+  const progress = useMemo(() => {
+    const fixedFilled = [patientForm.edad, patientForm.peso, patientForm.sexo].filter((value) => String(value || '').trim() !== '').length;
+    const dynamicFilled = unifiedVariables.filter((variable) => {
+      const value = patientForm.dynamicValues?.[variable.key];
+      if (Array.isArray(value)) return value.length > 0;
+      return String(value ?? '').trim() !== '';
+    }).length;
+    const total = 3 + unifiedVariables.length;
+    const filled = fixedFilled + dynamicFilled;
+    const percent = total ? Math.round((filled / total) * 100) : 0;
+    return { filled, total, percent };
+  }, [patientForm, unifiedVariables]);
 
   const updatePatientField = (field, value) => {
     setPatientForm((prev) => ({ ...prev, [field]: value }));
@@ -119,21 +209,31 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
     }));
   };
 
+  const updateDynamicValue = (key, value) => {
+    setPatientForm((prev) => ({
+      ...prev,
+      dynamicValues: {
+        ...(prev.dynamicValues || {}),
+        [key]: value,
+      },
+    }));
+  };
+
   const addLabRow = () => {
     setPatientForm((prev) => ({
       ...prev,
-      labRows: [...prev.labRows, { key: '', value: '' }],
+      labRows: [...prev.labRows, { id: crypto.randomUUID(), key: '', value: '' }],
     }));
   };
 
-  const removeLabRow = (index) => {
+  const removeLabRow = (rowId) => {
     setPatientForm((prev) => ({
       ...prev,
-      labRows: prev.labRows.filter((_, rowIndex) => rowIndex !== index),
+      labRows: prev.labRows.filter((row) => row.id !== rowId),
     }));
   };
 
-  const evaluateNow = (previewData = patientPreview) => {
+  const evaluateNow = useCallback((previewData = patientPreview) => {
     if (!evaluableRules.length) {
       setMessage(`No hay reglas activas para la versión ${activeNtsVersion}.`);
       setResults([]);
@@ -149,6 +249,7 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
     }
 
     setMessage('');
+    setManualResultOverride(null);
     const evaluation = evaluatePatient(previewData, { unmetPolicy });
     setResults(evaluation);
     setResponsibilityAccepted(isSimulation);
@@ -173,24 +274,21 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
     if (!evaluation.length) {
       setMessage('No se encontraron diagnósticos probables con los datos ingresados.');
     }
-  };
-
-  useEffect(() => {
-    evaluateNow(debouncedPatientPreview);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    rules,
-    evaluableRules,
+    patientPreview,
+    evaluableRules.length,
     activeNtsVersion,
-    activeEstablishment?.id,
-    activeEstablishment?.level,
-    activeEstablishment?.medicationsAvailable,
-    activeEstablishment?.equipmentAvailable,
-    debouncedPatientPreview,
+    activeEstablishment,
+    evaluatePatient,
     unmetPolicy,
     isSimulation,
     isProduction,
+    addAuditEntries,
   ]);
+
+  useEffect(() => {
+    evaluateNow(debouncedPatientPreview);
+  }, [memoizedEngine.evaluatedAt, debouncedPatientPreview, evaluateNow]);
 
   const globalAlerts = results.flatMap((result) => result.alerts || []).filter(Boolean);
 
@@ -207,6 +305,40 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
   }, [results, responsibilityAccepted]);
 
   const primaryResult = gatedResults[0] || null;
+  const displayedPrimaryResult = manualResultOverride || primaryResult;
+
+  const getFirstTreatment = (rule) => {
+    if (Array.isArray(rule?.treatmentLines) && rule.treatmentLines.length) {
+      const first = [...rule.treatmentLines].sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+      return {
+        name: first?.medicationName || first?.medicationId || 'Tratamiento no definido',
+        mgPorKg: Number(first?.dose?.mgPorKg || 0),
+      };
+    }
+
+    return {
+      name: rule?.treatment?.firstLine || rule?.treatmentPlan?.selectedTreatment || 'Tratamiento no definido',
+      mgPorKg: 0,
+    };
+  };
+
+  const ruleToResult = (rule) => {
+    const treatment = getFirstTreatment(rule);
+    return {
+      diagnosis: rule?.diagnosis || rule?.result?.classification || 'Diagnóstico no definido',
+      severity: rule?.severity || rule?.result?.severity || 'No definida',
+      treatmentPlan: {
+        selectedTreatment: treatment.name,
+        dosage: treatment.mgPorKg
+          ? { description: `${(treatment.mgPorKg * Number(patientForm.peso || 0)).toFixed(1)} mg (estimado)` }
+          : { description: 'No calculada' },
+        available: true,
+      },
+      requiresReferral: Boolean(rule?.requiresHospitalization),
+      referralReason: rule?.referralCriteria || '',
+      referralCriteria: rule?.referralCriteria || '',
+    };
+  };
 
   const handleConfirmDecision = () => {
     setDecisionMessage('');
@@ -216,7 +348,7 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
       return;
     }
 
-    if (!primaryResult) {
+    if (!displayedPrimaryResult) {
       setDecisionMessage('No hay resultado clínico para confirmar.');
       return;
     }
@@ -225,11 +357,11 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
 
     addDecision({
       auditId: latestAudit?.auditId || '',
-      clinicianId: 'SIN_CLINICIAN_ID',
-      diagnosisSuggested: primaryResult.diagnosis || '',
-      diagnosisFinal: primaryResult.diagnosis || '',
-      treatmentSuggested: primaryResult.treatmentPlan?.selectedTreatment || '',
-      treatmentFinal: primaryResult.treatmentPlan?.selectedTreatment || '',
+      clinicianId: operatorId,
+      diagnosisSuggested: displayedPrimaryResult.diagnosis || '',
+      diagnosisFinal: displayedPrimaryResult.diagnosis || '',
+      treatmentSuggested: displayedPrimaryResult.treatmentPlan?.selectedTreatment || '',
+      treatmentFinal: displayedPrimaryResult.treatmentPlan?.selectedTreatment || '',
       notes: 'Confirmación rápida desde Evaluación Clínica',
       confirmedAt: new Date().toISOString(),
     });
@@ -237,101 +369,236 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
     setDecisionMessage('Decisión clínica confirmada y enviada al Decision Log.');
   };
 
+  const renderDynamicField = (variable) => {
+    const value = patientForm.dynamicValues?.[variable.key];
+
+    if (variable.type === 'multiselect') {
+      const selectedValues = Array.isArray(value) ? value : [];
+      return (
+        <section className={styles.fieldBlock} key={variable.key}>
+          <span className={styles.label}>{variable.label || variable.key}</span>
+          <div className={styles.chipGroup}>
+            {(variable.options || []).map((option) => {
+              const active = selectedValues.includes(option);
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`${styles.chip} ${active ? styles.chipActive : ''}`}
+                  onClick={() => {
+                    const exists = selectedValues.includes(option);
+                    updateDynamicValue(
+                      variable.key,
+                      exists
+                        ? selectedValues.filter((item) => item !== option)
+                        : [...selectedValues, option],
+                    );
+                  }}
+                >
+                  {option}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      );
+    }
+
+    if (variable.type === 'select' && (variable.options || []).length <= 4) {
+      return (
+        <section className={styles.fieldBlock} key={variable.key}>
+          <span className={styles.label}>{variable.label || variable.key}</span>
+          <div className={styles.chipGroup}>
+            {(variable.options || []).map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`${styles.chip} ${value === option ? styles.chipActive : ''}`}
+                onClick={() => updateDynamicValue(variable.key, option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (variable.type === 'select') {
+      return (
+        <label key={variable.key} className={styles.fieldBlock}>
+          <span className={styles.label}>{variable.label || variable.key}</span>
+          <select className={styles.inputLarge} value={value || ''} onChange={(event) => updateDynamicValue(variable.key, event.target.value)}>
+            <option value="">Seleccionar</option>
+            {(variable.options || []).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    return (
+      <label key={variable.key} className={styles.fieldBlock}>
+        <span className={styles.label}>{variable.label || variable.key}</span>
+        <input
+          type={variable.type === 'number' ? 'number' : 'text'}
+          className={styles.inputLarge}
+          value={value || ''}
+          onChange={(event) => updateDynamicValue(variable.key, event.target.value)}
+        />
+        {variable.path?.includes('presion') ? <span className={styles.unit}>mmHg</span> : null}
+      </label>
+    );
+  };
+
   return (
-    <section style={{ display: 'grid', gap: 12 }}>
-      {message && (
-        <div style={{ border: '1px solid #f0c36d', background: '#fff8e5', borderRadius: 8, padding: 10 }}>
-          {message}
-        </div>
-      )}
+    <section className={styles.wrapper}>
+      {message && <div className={styles.notice}>{message}</div>}
+      {decisionMessage && <div className={styles.info}>{decisionMessage}</div>}
 
-      {decisionMessage && (
-        <div style={{ border: '1px solid #dbe2ef', background: '#eef6ff', borderRadius: 8, padding: 10 }}>
-          {decisionMessage}
-        </div>
-      )}
-
-      <section
-        style={{
-          display: 'grid',
-          gap: 12,
-          gridTemplateColumns: 'minmax(420px, 1.25fr) minmax(320px, 1fr)',
-          alignItems: 'start',
-        }}
-      >
-        <Card title="Ingreso rápido del paciente">
-          <section style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(90px, 1fr))', gap: 8 }}>
-              <label>
-                Edad
-                <input type="number" value={patientForm.edad} onChange={(e) => updatePatientField('edad', e.target.value)} />
-              </label>
-
-              <label>
-                Peso (kg)
-                <input type="number" value={patientForm.peso} onChange={(e) => updatePatientField('peso', e.target.value)} />
-              </label>
-
-              <label>
-                Sexo
-                <select value={patientForm.sexo} onChange={(e) => updatePatientField('sexo', e.target.value)}>
-                  <option value="F">F</option>
-                  <option value="M">M</option>
-                  <option value="Otro">Otro</option>
-                </select>
-              </label>
+      <section className={styles.layout}>
+        <section className={styles.leftCol}>
+          <Card title="Paso 1: Selector de patología" variant="default" collapsible>
+            <div className={styles.stepHeader}>
+              <span>Filtra variables por patología o evalúa todas.</span>
+              <button type="button" className={styles.toggleBtn} onClick={() => setShowPathologyStep((prev) => !prev)}>
+                {showPathologyStep ? 'Ocultar' : 'Mostrar'}
+              </button>
             </div>
 
-            <section style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
-              <strong>Signos clínicos</strong>
-              <input
-                type="search"
-                value={signSearch}
-                onChange={(event) => setSignSearch(event.target.value)}
-                placeholder="Buscar signos..."
-              />
+            {showPathologyStep && (
+              <section className={styles.pathologyCategories}>
+                <button
+                  type="button"
+                  className={`${styles.pathologyCard} ${selectedPathology === 'ALL' ? styles.pathologyCardActive : ''}`}
+                  onClick={() => setSelectedPathology('ALL')}
+                >
+                  <span>🧭</span>
+                  <span>Todas las patologías</span>
+                </button>
 
-              <div style={{ maxHeight: 170, overflowY: 'auto', display: 'grid', gap: 4, paddingRight: 4 }}>
-                {filteredSignOptions.map((sign) => (
-                  <label key={sign} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-                    <input
-                      type="checkbox"
-                      checked={patientForm.selectedSigns.includes(sign)}
-                      onChange={() => toggleSign(sign)}
-                    />
-                    <span>{sign}</span>
-                  </label>
+                {['emergencia', 'consulta', 'programa'].map((category) => (
+                  <section
+                    key={category}
+                    className={`${styles.categoryBlock} ${
+                      category === 'emergencia'
+                        ? styles.categoryEmergencia
+                        : category === 'consulta'
+                          ? styles.categoryConsulta
+                          : styles.categoryPrograma
+                    }`}
+                  >
+                    <strong>{PATHOLOGY_CATEGORIES[category]}</strong>
+                    <div className={styles.pathologyGrid}>
+                      {PATHOLOGY_TEMPLATES.filter((template) => template.category === category).map((template) => (
+                        <button
+                          key={template.pathology}
+                          type="button"
+                          className={`${styles.pathologyCard} ${selectedPathology === template.pathology ? styles.pathologyCardActive : ''}`}
+                          onClick={() => setSelectedPathology(template.pathology)}
+                        >
+                          <span>{PATHOLOGY_ICONS[template.pathology] || '🩺'}</span>
+                          <span>{template.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </section>
+            )}
+          </Card>
+
+          <Card title="Paso 2: Ingreso de datos del paciente">
+            <section className={styles.progressWrap}>
+              <div className={styles.progressTrack}><div className={styles.progressValue} style={{ width: `${progress.percent}%` }} /></div>
+              <span className={styles.progressText}>Campos completados: {progress.filled}/{progress.total}</span>
+            </section>
+
+            <section className={styles.fixedRow}>
+              <label className={styles.fieldBlock}>
+                <span className={styles.label}>Edad</span>
+                <input type="number" className={styles.inputLarge} value={patientForm.edad} onChange={(e) => updatePatientField('edad', e.target.value)} />
+              </label>
+              <label className={styles.fieldBlock}>
+                <span className={styles.label}>Peso (kg)</span>
+                <input type="number" className={styles.inputLarge} value={patientForm.peso} onChange={(e) => updatePatientField('peso', e.target.value)} />
+              </label>
+            </section>
+
+            <section className={styles.fieldBlock}>
+              <span className={styles.label}>Sexo</span>
+              <div className={styles.sexButtons}>
+                {['F', 'M', 'Otro'].map((sex) => (
+                  <button
+                    key={sex}
+                    type="button"
+                    className={`${styles.sexBtn} ${patientForm.sexo === sex ? styles.sexBtnActive : ''}`}
+                    onClick={() => updatePatientField('sexo', sex)}
+                  >
+                    {sex}
+                  </button>
                 ))}
               </div>
             </section>
 
-            <section style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
-              <strong>Laboratorio dinámico</strong>
+            <section className={styles.fieldBlock}>
+              <span className={styles.label}>Signos clínicos (compatibilidad reglas antiguas)</span>
+              <input
+                type="search"
+                className={styles.inputLarge}
+                value={signSearch}
+                onChange={(event) => setSignSearch(event.target.value)}
+                placeholder="Buscar signos..."
+              />
+              <div className={styles.chipGroup}>
+                {filteredSignOptions.map((sign) => {
+                  const active = patientForm.selectedSigns.includes(sign);
+                  return (
+                    <button key={sign} type="button" className={`${styles.chip} ${active ? styles.chipActive : ''}`} onClick={() => toggleSign(sign)}>
+                      {sign}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {unifiedVariables.length > 0 && (
+              <section className={styles.fieldBlock}>
+                <span className={styles.label}>Variables dinámicas ({selectedPathology === 'ALL' ? 'todas' : selectedPathology})</span>
+                <div className={styles.dynamicGrid}>{unifiedVariables.map(renderDynamicField)}</div>
+              </section>
+            )}
+
+            <section className={styles.fieldBlock}>
+              <span className={styles.label}>Laboratorio dinámico (compatibilidad reglas antiguas)</span>
               {patientForm.labRows.map((row, index) => (
-                <div key={`lab-row-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
+                <div key={row.id} className={styles.fixedRow}>
                   <input
+                    className={styles.inputLarge}
                     value={row.key}
                     placeholder="Parámetro (ej. hemoglobina)"
                     onChange={(event) => updateLabRow(index, 'key', event.target.value)}
                   />
-                  <input
-                    value={row.value}
-                    placeholder="Valor"
-                    onChange={(event) => updateLabRow(index, 'value', event.target.value)}
-                  />
-                  <button type="button" onClick={() => removeLabRow(index)} style={{ fontSize: 12 }}>
-                    Quitar
-                  </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                    <input
+                      className={styles.inputLarge}
+                      value={row.value}
+                      placeholder="Valor"
+                      onChange={(event) => updateLabRow(index, 'value', event.target.value)}
+                    />
+                    <button type="button" className={styles.actionBtn} onClick={() => removeLabRow(row.id)}>Quitar</button>
+                  </div>
                 </div>
               ))}
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" onClick={addLabRow} style={{ fontSize: 12 }}>
-                  + Parámetro
-                </button>
-                <label>
-                  Política
-                  <select value={unmetPolicy} onChange={(e) => setUnmetPolicy(e.target.value)}>
+              <div className={styles.actions}>
+                <button type="button" className={styles.actionBtn} onClick={addLabRow}>+ Parámetro</button>
+                <label className={styles.fieldBlock} style={{ minWidth: 180 }}>
+                  <span className={styles.label}>Política</span>
+                  <select className={styles.inputLarge} value={unmetPolicy} onChange={(e) => setUnmetPolicy(e.target.value)}>
                     <option value="reference">Referencia</option>
                     <option value="exclude">Excluir</option>
                   </select>
@@ -339,81 +606,155 @@ const ClinicalEvaluator = ({ onEditRelatedRules = () => {} }) => {
               </div>
             </section>
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={evaluateNow}>Recalcular</button>
-              <button type="button" onClick={handleConfirmDecision}>Confirmar decisión</button>
-              <button type="button" onClick={onEditRelatedRules}>Editar reglas relacionadas</button>
+            <div className={styles.actions}>
+              <button type="button" className={styles.actionBtn} onClick={evaluateNow}>Recalcular</button>
+              <button type="button" className={styles.actionBtn} onClick={handleConfirmDecision}>Confirmar decisión</button>
+              <button type="button" className={styles.actionBtn} onClick={onEditRelatedRules}>Editar reglas relacionadas</button>
             </div>
-          </section>
-        </Card>
+          </Card>
+        </section>
 
-        <Card title="Resultado clínico en tiempo real">
-          {!primaryResult ? (
-            <p style={{ margin: 0, color: '#6b7280' }}>Sin diagnóstico probable aún.</p>
-          ) : (
-            <section style={{ display: 'grid', gap: 8 }}>
-              <div style={{ fontSize: 13, color: '#4b5563' }}>Modo: {isSimulation ? 'Simulación' : 'Producción'}</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: 800, lineHeight: 1.2 }}>
-                {primaryResult.diagnosis || 'Diagnóstico no disponible'}
-              </div>
-              <div>
-                <SeverityBadge severity={primaryResult.severity} />
-              </div>
-
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                <strong>Tratamiento</strong>
-                <div style={{ marginTop: 4 }}>{primaryResult.treatmentPlan?.selectedTreatment || 'Sin selección'}</div>
-              </div>
-
-              <div
-                style={{
-                  border: '1px solid #bfdbfe',
-                  borderRadius: 8,
-                  padding: 10,
-                  background: '#eff6ff',
-                }}
+        <section className={styles.rightCol} id="resultado-clinico">
+          <Card title="Paso 3: Resultado" variant="default">
+            <div className={styles.segmented}>
+              <button
+                type="button"
+                className={`${styles.segmentBtn} ${resultView === 'form' ? styles.segmentBtnActive : ''}`}
+                onClick={() => setResultView('form')}
               >
-                <strong>Dosis destacada</strong>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>
-                  {primaryResult.treatmentPlan?.dosage?.description || 'No calculada'}
+                📋 Formulario
+              </button>
+              <button
+                type="button"
+                className={`${styles.segmentBtn} ${resultView === 'flowchart' ? styles.segmentBtnActive : ''}`}
+                onClick={() => setResultView('flowchart')}
+              >
+                🔀 Flujograma
+              </button>
+            </div>
+
+            {resultView === 'flowchart' ? (
+              selectedPathology === 'ALL' ? (
+                <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
+                  Selecciona una patología para ver su flujograma de decisión
+                </p>
+              ) : (
+                <>
+                  <ClinicalFlowchart
+                    rules={pathologyScopedRules}
+                    highlightedDiagnosis={displayedPrimaryResult?.diagnosis || ''}
+                    onSelectResult={(rule) => setFlowchartSelection(rule)}
+                  />
+
+                  {flowchartSelection && (
+                    <section className={styles.bottomSheet}>
+                      <h4 style={{ margin: 0 }}>{flowchartSelection.diagnosis || flowchartSelection.result?.classification || 'Diagnóstico'}</h4>
+                      <SeverityBadge severity={flowchartSelection.severity || flowchartSelection.result?.severity} />
+                      <p style={{ margin: 0 }}><strong>Fármaco 1ra línea:</strong> {getFirstTreatment(flowchartSelection).name}</p>
+                      <p style={{ margin: 0 }}>
+                        <strong>Dosis calculada:</strong>{' '}
+                        {getFirstTreatment(flowchartSelection).mgPorKg && Number(patientForm.peso || 0)
+                          ? `${(getFirstTreatment(flowchartSelection).mgPorKg * Number(patientForm.peso || 0)).toFixed(1)} mg`
+                          : 'No disponible'}
+                      </p>
+                      <p style={{ margin: 0 }}><strong>Criterios de referencia:</strong> {flowchartSelection.referralCriteria || '-'}</p>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          setManualResultOverride(ruleToResult(flowchartSelection));
+                          setResultView('form');
+                          document.getElementById('resultado-clinico')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                      >
+                        Usar este diagnóstico
+                      </button>
+                    </section>
+                  )}
+                </>
+              )
+            ) : !displayedPrimaryResult ? (
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>Sin diagnóstico probable aún.</p>
+            ) : (
+              <section style={{ display: 'grid', gap: 10 }}>
+                {displayedPrimaryResult.requiresReferral && (
+                  <section className={styles.referralBanner}>
+                    Referencia requerida: {displayedPrimaryResult.referralReason || displayedPrimaryResult.referralCriteria}
+                  </section>
+                )}
+
+                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Modo: {isSimulation ? 'Simulación' : 'Producción'}</div>
+                <div className={styles.resultDiagnosis}>{displayedPrimaryResult.diagnosis || 'Diagnóstico no disponible'}</div>
+                <SeverityBadge severity={displayedPrimaryResult.severity} />
+
+                <div>
+                  <strong>Tratamiento</strong>
+                  <div style={{ marginTop: 4 }}>{displayedPrimaryResult.treatmentPlan?.selectedTreatment || 'Sin selección'}</div>
+                  <div style={{ marginTop: 8 }}>
+                    {displayedPrimaryResult.treatmentPlan?.available !== false ? (
+                      <span className={styles.medChipOk}>Disponible en establecimiento</span>
+                    ) : (
+                      <span className={styles.medChipNo}>No disponible en establecimiento</span>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {Boolean(globalAlerts.length) && (
-                <section style={{ border: '1px solid #fcd34d', background: '#fff8e1', borderRadius: 8, padding: 8 }}>
-                  <strong>Alertas</strong>
-                  <ul style={{ margin: '6px 0 0 18px' }}>
-                    {globalAlerts.map((alert, index) => (
-                      <li key={`alert-${index}`}>{alert}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
+                <div className={styles.resultDose}>
+                  <strong>Dosis destacada</strong>
+                  <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700 }}>
+                    {displayedPrimaryResult.treatmentPlan?.dosage?.description || 'No calculada'}
+                  </div>
+                </div>
 
-              {primaryResult.requiresReferral && (
-                <section style={{ border: '1px solid #ef4444', background: '#fee2e2', borderRadius: 8, padding: 8 }}>
-                  <strong>Referencia requerida</strong>
-                  <div>{primaryResult.referralReason || primaryResult.referralCriteria}</div>
-                </section>
-              )}
+                <button type="button" className={styles.actionBtn} onClick={() => setResultView('flowchart')}>
+                  Ver en flujograma →
+                </button>
 
-              {!responsibilityAccepted && isProduction && (
-                <ResponsibilityGate
-                  onConfirm={({ simulateMode }) => {
-                    setResponsibilityAccepted(true);
-                    if (!simulateMode) {
-                      addResponsibilityAcceptance({
-                        establishmentId: activeEstablishment?.id || '',
-                        simulateMode: false,
-                      });
-                    }
-                  }}
-                />
-              )}
-            </section>
-          )}
-        </Card>
+                {Boolean(globalAlerts.length) && (
+                  <section className={styles.notice}>
+                    <strong>Alertas</strong>
+                    <ul style={{ margin: '6px 0 0 18px' }}>
+                      {globalAlerts.map((alert, index) => (
+                        <li key={`alert-${index}`}>{alert}</li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {!responsibilityAccepted && isProduction && (
+                  <ResponsibilityGate
+                    onConfirm={({ simulateMode }) => {
+                      setResponsibilityAccepted(true);
+                      if (!simulateMode) {
+                        addResponsibilityAcceptance({
+                          establishmentId: activeEstablishment?.id || '',
+                          simulateMode: false,
+                        });
+                      }
+                    }}
+                  />
+                )}
+              </section>
+            )}
+          </Card>
+        </section>
       </section>
+
+      {isMobile && (
+        <button
+          type="button"
+          className={`${styles.fab} ${displayedPrimaryResult ? styles.fabPrimary : styles.fabMuted}`}
+          onClick={() => {
+            if (!displayedPrimaryResult) {
+              evaluateNow();
+              return;
+            }
+            document.getElementById('resultado-clinico')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+        >
+          {displayedPrimaryResult ? 'Ver resultado →' : 'Evaluar'}
+        </button>
+      )}
     </section>
   );
 };

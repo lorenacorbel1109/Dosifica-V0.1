@@ -20,4 +20,4 @@ const results = runRuleEngine({
   patientData,
 });
 
-console.log(JSON.stringify(results, null, 2));
+export default results;

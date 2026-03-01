@@ -150,6 +150,15 @@ const buildTherapeuticMedications = ({
   facilityLevel,
   rule,
 }) => {
+  if (!Array.isArray(nationalMedications) || nationalMedications.length === 0) {
+    // TODO: conectar fallback de catálogo nacional/cache para no degradar sugerencias terapéuticas.
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('ruleEngine: nationalMedications vacío; no se podrán mapear medicamentos terapéuticos.', {
+        establishmentId,
+      });
+    }
+  }
+
   const normalizedSuggested = specificMedications.map((item) => normalizeText(item)).filter(Boolean);
 
   const recommended = nationalMedications.filter((medication) => {

@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Icono clínico de referencia/hospitalización.

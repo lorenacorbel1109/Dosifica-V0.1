@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Buscador global en tiempo real.

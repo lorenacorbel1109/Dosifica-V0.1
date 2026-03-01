@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 
 const AppModeStoreContext = createContext(null);
 
@@ -9,6 +9,7 @@ const AppModeStoreContext = createContext(null);
  */
 export const AppModeStoreProvider = ({ children }) => {
   const [mode, setMode] = useState('simulation');
+  const [operatorId, setOperatorId] = useState('');
 
   const isSimulation = mode === 'simulation';
   const isProduction = mode === 'production';
@@ -17,10 +18,12 @@ export const AppModeStoreProvider = ({ children }) => {
     () => ({
       mode,
       setMode,
+      operatorId,
+      setOperatorId,
       isSimulation,
       isProduction,
     }),
-    [mode, isSimulation, isProduction],
+    [mode, operatorId, isSimulation, isProduction],
   );
 
   return <AppModeStoreContext.Provider value={value}>{children}</AppModeStoreContext.Provider>;

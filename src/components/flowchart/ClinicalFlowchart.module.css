@@ -1,0 +1,63 @@
+.wrapper {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.canvasScroll {
+  max-height: 70vh;
+  overflow: auto;
+  background: linear-gradient(to bottom, #fff, #f8fafc);
+}
+
+.svg {
+  width: 100%;
+  display: block;
+}
+
+.meta {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.detailPanel {
+  margin-top: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.detailTitle {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.detailText {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.empty {
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: #fff;
+  padding: var(--space-4);
+  color: var(--color-text-secondary);
+}
+
+.highlightNode {
+  animation: nodePulse 1.4s ease-in-out infinite;
+}
+
+@keyframes nodePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.82; }
+}

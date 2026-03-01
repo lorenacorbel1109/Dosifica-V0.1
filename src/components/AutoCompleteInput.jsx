@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 
 /**
  * Input con sugerencias rápidas para texto clínico frecuente.

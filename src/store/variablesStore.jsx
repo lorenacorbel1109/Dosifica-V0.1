@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 
 const VariablesStoreContext = createContext(null);
 const STORAGE_KEY = 'clinical:variables:v1';
