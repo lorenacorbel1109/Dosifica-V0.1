@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Card from './Card.jsx';
 import { useVariablesStore } from '../store/variablesStore.jsx';
 

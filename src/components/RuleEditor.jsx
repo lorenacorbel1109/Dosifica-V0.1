@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import RuleList from './RuleList.jsx';
 import AutoCompleteInput from './AutoCompleteInput.jsx';
 import Card from './Card.jsx';
+import RuleBuilderForm from './ruleBuilder/RuleBuilderForm.jsx';
 import { useClinicalStore } from '../store/clinicalStore.jsx';
 import { useVariablesStore } from '../store/variablesStore.jsx';
+import { useNationalMedicationsStore } from '../store/nationalMedicationsStore.jsx';
 
 const MEDICATION_SUGGESTIONS = ['SRO', 'ClNa 0.9%', 'Sulfato ferroso', 'Hierro polimaltosado', 'Albendazol'];
 
@@ -19,6 +21,7 @@ const buildCondition = (variable) => ({
 const buildGroup = () => ({ operator: 'AND', conditions: [] });
 const parseCsv = (text) => text.split(',').map((item) => item.trim()).filter(Boolean);
 const isGroup = (node) => Boolean(node?.conditions && node?.operator);
+const isVisualRule = (rule) => Array.isArray(rule?.clinicalVariables);
 
 const createEmptyRule = () => ({
   id: '',
@@ -128,7 +131,11 @@ const RuleNodeBuilder = ({ node, onChange, onDelete, variables }) => {
             <option value="AND">AND</option>
             <option value="OR">OR</option>
           </select>
-          {onDelete && <button type="button" onClick={onDelete}>Eliminar grupo</button>}
+          {onDelete && (
+            <button type="button" onClick={onDelete}>
+              Eliminar grupo
+            </button>
+          )}
         </div>
 
         {(node.conditions || []).map((child, index) => (
@@ -149,7 +156,10 @@ const RuleNodeBuilder = ({ node, onChange, onDelete, variables }) => {
         ))}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => onChange({ ...node, conditions: [...node.conditions, buildCondition(variables[0])] })}>
+          <button
+            type="button"
+            onClick={() => onChange({ ...node, conditions: [...node.conditions, buildCondition(variables[0])] })}
+          >
             Agregar condición
           </button>
           <button type="button" onClick={() => onChange({ ...node, conditions: [...node.conditions, buildGroup()] })}>
@@ -176,7 +186,14 @@ const RuleNodeBuilder = ({ node, onChange, onDelete, variables }) => {
               return;
             }
 
-            onChange({ ...node, field: exact.id, label: exact.name, type: exact.type, unit: exact.unit || '', value: exact.type === 'boolean' ? false : '' });
+            onChange({
+              ...node,
+              field: exact.id,
+              label: exact.name,
+              type: exact.type,
+              unit: exact.unit || '',
+              value: exact.type === 'boolean' ? false : '',
+            });
           }}
           placeholder="Variable clínica"
         />
@@ -200,13 +217,19 @@ const RuleNodeBuilder = ({ node, onChange, onDelete, variables }) => {
         ) : selectedVariable?.type === 'select' ? (
           <select value={String(node.value)} onChange={(e) => onChange({ ...node, value: e.target.value })}>
             <option value="">Seleccionar</option>
-            {(selectedVariable.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+            {(selectedVariable.options || []).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
           </select>
         ) : (
           <input value={node.value} onChange={(e) => onChange({ ...node, value: e.target.value })} placeholder="Valor" />
         )}
 
-        <button type="button" onClick={onDelete}>Eliminar</button>
+        <button type="button" onClick={onDelete}>
+          Eliminar
+        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
@@ -218,22 +241,34 @@ const RuleNodeBuilder = ({ node, onChange, onDelete, variables }) => {
 };
 
 const RuleEditor = ({ filterText = '' }) => {
-  const { rules, addRule, updateRule, removeRule, replaceRules } = useClinicalStore();
+  const {
+    rules,
+    addRule,
+    updateRule,
+    removeRule,
+    addRuleFromBuilder,
+    updateRuleFromBuilder,
+    exportRulesToJSON,
+    importRulesFromJSON,
+  } = useClinicalStore();
   const { variables } = useVariablesStore();
+  const { activeNationalMedications } = useNationalMedicationsStore();
 
   const [formRule, setFormRule] = useState(createEmptyRule());
   const [editingIndex, setEditingIndex] = useState(null);
-  const [jsonImportText, setJsonImportText] = useState('');
   const [formError, setFormError] = useState('');
   const [saveStatus, setSaveStatus] = useState('idle');
-
-  const generatedJson = useMemo(() => JSON.stringify(rules, null, 2), [rules]);
+  const [viewMode, setViewMode] = useState('list');
+  const [visualRuleId, setVisualRuleId] = useState(null);
+  const [visualInitialRule, setVisualInitialRule] = useState(null);
+  const [importMessage, setImportMessage] = useState('');
+  const fileInputRef = useRef(null);
 
   const filteredRules = useMemo(() => {
     const query = filterText.trim().toLowerCase();
     if (!query) return rules;
     return rules.filter((rule) =>
-      [rule.id, rule.pathologyId || rule.pathology, rule.result?.classification || rule.diagnosis]
+      [rule.id, rule.pathologyId || rule.pathology, rule.result?.classification || rule.diagnosis, rule.name]
         .some((field) => String(field || '').toLowerCase().includes(query)),
     );
   }, [rules, filterText]);
@@ -263,14 +298,41 @@ const RuleEditor = ({ filterText = '' }) => {
     setEditingIndex(null);
     setFormError('');
     setSaveStatus('saved');
+    setViewMode('list');
   };
 
-  return (
-    <section style={{ display: 'grid', gap: 12 }}>
-      {formError && <div style={{ border: '1px solid #e39', background: '#fff0f5', color: '#701', padding: 10, borderRadius: 8 }}>{formError}</div>}
-      {saveStatus === 'saved' && <div style={{ border: '1px solid #86efac', background: '#f0fdf4', padding: 8, borderRadius: 8, fontSize: 12 }}>Regla guardada correctamente.</div>}
+  const openNewVisual = () => {
+    setVisualInitialRule(null);
+    setVisualRuleId(null);
+    setFormError('');
+    setSaveStatus('idle');
+    setViewMode('visual');
+  };
 
-      <Card title="Constructor dinámico de reglas">
+  const handleImportClick = () => fileInputRef.current?.click();
+
+  const handleFileImport = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const result = importRulesFromJSON(text);
+      if (result?.success) {
+        setImportMessage(`Importación exitosa: ${result.count} reglas cargadas.`);
+      } else {
+        setImportMessage(result?.error || 'JSON inválido');
+      }
+    } catch {
+      setImportMessage('JSON inválido');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const renderRawEditor = () => (
+    <section style={{ display: 'grid', gap: 12 }}>
+      <Card title="Editor de reglas (modo código)">
         <section style={{ display: 'grid', gap: 10 }}>
           <label>ID<input value={formRule.id} onChange={(e) => setFormRule((prev) => ({ ...prev, id: e.target.value }))} /></label>
           <label>Patología<input value={formRule.pathologyId} onChange={(e) => setFormRule((prev) => ({ ...prev, pathologyId: e.target.value }))} /></label>
@@ -302,59 +364,104 @@ const RuleEditor = ({ filterText = '' }) => {
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={saveRule}>Guardar regla</button>
-            {editingIndex !== null && (
-              <button type="button" onClick={() => { setFormRule(createEmptyRule()); setEditingIndex(null); setFormError(''); }}>
-                Cancelar edición
-              </button>
-            )}
+            <button type="button" onClick={() => { setViewMode('list'); setFormError(''); }}>
+              Cancelar
+            </button>
           </div>
         </section>
       </Card>
+    </section>
+  );
 
-      <Card title="Vista previa JSON">
-        <section style={{ display: 'grid', gap: 8 }}>
-          <textarea rows={6} value={jsonImportText} onChange={(e) => setJsonImportText(e.target.value)} placeholder="Importar reglas JSON" />
+  return (
+    <section style={{ display: 'grid', gap: 12 }}>
+      {formError && <div style={{ border: '1px solid #e39', background: '#fff0f5', color: '#701', padding: 10, borderRadius: 8 }}>{formError}</div>}
+      {saveStatus === 'saved' && <div style={{ border: '1px solid #86efac', background: '#f0fdf4', padding: 8, borderRadius: 8, fontSize: 12 }}>Regla guardada correctamente.</div>}
+      {importMessage && (
+        <div style={{ border: '1px solid #93c5fd', background: '#eff6ff', color: '#1e3a8a', padding: 8, borderRadius: 8 }}>
+          {importMessage}
+        </div>
+      )}
+
+      <Card title="Editor de reglas clínicas">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={openNewVisual}
+            style={{
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 14px',
+              background: '#1f4f99',
+              color: '#fff',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            + Nueva regla clínica
+          </button>
+
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => {
-              try {
-                const parsed = JSON.parse(jsonImportText);
-                if (!Array.isArray(parsed)) throw new Error('invalid');
-                replaceRules(parsed.map(normalizeRuleForSave));
-                setFormError('');
-                setSaveStatus('saved');
-              } catch {
-                setFormError('JSON inválido para importar reglas.');
-              }
-            }}>Importar JSON</button>
-            <button type="button" onClick={() => {
-              const blob = new Blob([generatedJson], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'clinical-rules.json';
-              a.click();
-              URL.revokeObjectURL(url);
-            }}>Exportar JSON</button>
+            <button type="button" onClick={() => exportRulesToJSON()}>⬇ Exportar reglas</button>
+            <button type="button" onClick={handleImportClick}>⬆ Importar reglas</button>
+            <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={handleFileImport} />
           </div>
-          <pre style={{ background: '#f8f8f8', borderRadius: 8, padding: 10, margin: 0, overflowX: 'auto' }}>{generatedJson}</pre>
-        </section>
+        </div>
       </Card>
 
-      <RuleList
-        rules={filteredRules}
-        onEdit={(rule) => {
-          const sourceIndex = rules.findIndex((item) => item.id === rule.id);
-          if (sourceIndex < 0) return;
-          setFormRule(normalizeRuleForEditor(rules[sourceIndex]));
-          setEditingIndex(sourceIndex);
-          setSaveStatus('idle');
-        }}
-        onDelete={(rule) => {
-          const sourceIndex = rules.findIndex((item) => item.id === rule.id);
-          if (sourceIndex < 0) return;
-          removeRule(sourceIndex);
-        }}
-      />
+      {viewMode === 'visual' && (
+        <Card title="Rule Builder Visual">
+          <RuleBuilderForm
+            initialRule={visualInitialRule}
+            nationalMedications={activeNationalMedications || []}
+            onCancel={() => {
+              setViewMode('list');
+              setVisualRuleId(null);
+              setVisualInitialRule(null);
+            }}
+            onSave={(savedRule) => {
+              if (visualRuleId) {
+                updateRuleFromBuilder(visualRuleId, savedRule);
+              } else {
+                addRuleFromBuilder(savedRule);
+              }
+              setSaveStatus('saved');
+              setViewMode('list');
+              setVisualRuleId(null);
+              setVisualInitialRule(null);
+            }}
+          />
+        </Card>
+      )}
+
+      {viewMode === 'raw' && renderRawEditor()}
+
+      {viewMode === 'list' && (
+        <RuleList
+          rules={filteredRules}
+          onEdit={(rule) => {
+            const sourceIndex = rules.findIndex((item) => item.id === rule.id);
+            if (sourceIndex < 0) return;
+
+            if (isVisualRule(rules[sourceIndex])) {
+              setVisualRuleId(rules[sourceIndex].id);
+              setVisualInitialRule(rules[sourceIndex]);
+              setViewMode('visual');
+              return;
+            }
+
+            setFormRule(normalizeRuleForEditor(rules[sourceIndex]));
+            setEditingIndex(sourceIndex);
+            setSaveStatus('idle');
+            setViewMode('raw');
+          }}
+          onDelete={(rule) => {
+            const sourceIndex = rules.findIndex((item) => item.id === rule.id);
+            if (sourceIndex < 0) return;
+            removeRule(sourceIndex);
+          }}
+        />
+      )}
     </section>
   );
 };

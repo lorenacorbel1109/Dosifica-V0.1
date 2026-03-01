@@ -1,9 +1,29 @@
-import React from 'react';
+import { useState } from 'react';
+
+const isVisualRule = (rule) => Array.isArray(rule?.clinicalVariables);
+
+const TypeBadge = ({ visual }) => (
+  <span
+    style={{
+      display: 'inline-block',
+      borderRadius: 999,
+      padding: '2px 8px',
+      fontSize: 12,
+      fontWeight: 700,
+      background: visual ? '#dcfce7' : '#e5e7eb',
+      color: visual ? '#166534' : '#374151',
+    }}
+  >
+    {visual ? 'Visual' : 'Código'}
+  </span>
+);
 
 /**
  * Lista simple y escalable de reglas clínicas cargadas desde estado global.
  */
 const RuleList = ({ rules, onEdit, onDelete }) => {
+  const [visibleCount, setVisibleCount] = useState(20);
+
   if (!rules.length) {
     return (
       <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
@@ -13,54 +33,62 @@ const RuleList = ({ rules, onEdit, onDelete }) => {
     );
   }
 
+  const visibleRules = rules.slice(0, visibleCount);
+  const canShowMore = rules.length > visibleCount;
+
   return (
-    <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+    <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8, overflowX: 'auto' }}>
       <h3>Reglas registradas ({rules.length})</h3>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        {rules.map((rule, index) => {
-          const classification = rule.result?.classification || rule.diagnosis || 'Sin clasificación';
-          const severity = rule.result?.severity || rule.severity || '-';
-          const level = rule.levelRestriction || rule.levelRequired || rule.requiredCareLevel || '-';
-          const planName = rule.managementPlan?.name || rule.managementPlanId || '-';
-          const meds = Array.isArray(rule.specificMedications) ? rule.specificMedications : (rule.requiredMedications || []);
 
-          return (
-            <li
-              key={rule.id || `${rule.pathology}-${index}`}
-              style={{
-                borderBottom: '1px solid #efefef',
-                padding: '10px 0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 12,
-              }}
-            >
-              <div>
-                <strong>{classification}</strong>
-                <div style={{ fontSize: 13, color: '#555' }}>
-                  Patología: {rule.pathologyId || rule.pathology || '-'} | Severidad: {severity}
-                </div>
-                <div style={{ fontSize: 12, color: '#777' }}>
-                  Condiciones: {rule.conditions?.conditions?.length || rule.conditions?.length || 0} | Nivel requerido:{' '}
-                  {Array.isArray(level) ? level.join(', ') : level} | Prioridad: {Number(rule.priority || 0)} | Plan: {planName}
-                </div>
-                <div style={{ fontSize: 12, color: '#777' }}>
-                  Medicación específica: {Array.isArray(meds) && meds.length ? meds.join(', ') : '-'}
-                </div>
-              </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+        <thead>
+          <tr style={{ background: '#f8fafc' }}>
+            <th style={{ textAlign: 'left', padding: 10 }}>Clasificación</th>
+            <th style={{ textAlign: 'left', padding: 10 }}>Patología</th>
+            <th style={{ textAlign: 'left', padding: 10 }}>Severidad</th>
+            <th style={{ textAlign: 'left', padding: 10 }}>Tipo</th>
+            <th style={{ textAlign: 'left', padding: 10 }}>Prioridad</th>
+            <th style={{ textAlign: 'left', padding: 10 }}>Acciones</th>
+          </tr>
+        </thead>
 
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => onEdit(rule)}>
-                  Editar
-                </button>
-                <button type="button" onClick={() => onDelete(rule)}>
-                  Eliminar
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+        <tbody>
+          {visibleRules.map((rule, index) => {
+            const classification = rule.result?.classification || rule.diagnosis || 'Sin clasificación';
+            const severity = rule.result?.severity || rule.severity || '-';
+            const pathology = rule.pathologyId || rule.pathology || '-';
+            const visual = isVisualRule(rule);
+
+            return (
+              <tr key={rule.id || `${rule.pathology}-${index}`} style={{ borderTop: '1px solid #efefef' }}>
+                <td style={{ padding: 10 }}><strong>{classification}</strong></td>
+                <td style={{ padding: 10 }}>{pathology}</td>
+                <td style={{ padding: 10 }}>{severity}</td>
+                <td style={{ padding: 10 }}><TypeBadge visual={visual} /></td>
+                <td style={{ padding: 10 }}>{Number(rule.priority || 0)}</td>
+                <td style={{ padding: 10 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" onClick={() => onEdit(rule)}>
+                      Editar
+                    </button>
+                    <button type="button" onClick={() => onDelete(rule)}>
+                      Eliminar
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {canShowMore && (
+        <div style={{ marginTop: 10 }}>
+          <button type="button" onClick={() => setVisibleCount((prev) => prev + 20)}>
+            Mostrar más
+          </button>
+        </div>
+      )}
     </section>
   );
 };

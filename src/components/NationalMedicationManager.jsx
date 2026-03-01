@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Card from './Card.jsx';
 import { useNationalMedicationsStore } from '../store/nationalMedicationsStore.jsx';
 
@@ -28,11 +28,15 @@ const NationalMedicationManager = () => {
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState('');
   const [message, setMessage] = useState('');
+  const [visibleCount, setVisibleCount] = useState(20);
 
   const sortedRows = useMemo(
     () => [...nationalMedications].sort((a, b) => a.genericName.localeCompare(b.genericName, 'es')),
     [nationalMedications],
   );
+
+  const visibleRows = sortedRows.slice(0, visibleCount);
+  const canShowMore = sortedRows.length > visibleCount;
 
   const reset = () => {
     setForm(initialForm);
@@ -145,7 +149,7 @@ const NationalMedicationManager = () => {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((item) => (
+              {visibleRows.map((item) => (
                 <tr key={item.id} style={{ borderTop: '1px solid #e2e8f0' }}>
                   <td>{item.id}</td>
                   <td>{item.genericName}<div style={{ color: '#64748b' }}>{item.concentration}</div></td>
@@ -163,6 +167,13 @@ const NationalMedicationManager = () => {
             </tbody>
           </table>
         </div>
+        {canShowMore && (
+          <div style={{ marginTop: 8 }}>
+            <button type="button" onClick={() => setVisibleCount((prev) => prev + 20)}>
+              Mostrar más
+            </button>
+          </div>
+        )}
       </section>
     </Card>
   );

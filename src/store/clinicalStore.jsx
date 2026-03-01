@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import {
   cloneRulesToVersion,
   ensureRuleVersionMetadata,
@@ -12,6 +12,7 @@ import defaultRulesJson from '../data/defaultRules.json';
 const ClinicalStoreContext = createContext(null);
 const DEFAULT_VERSION = 'NTS-2024';
 const STORAGE_KEY = 'clinical:rules:v2';
+let persistTimeoutId = null;
 
 const normalizeRules = (rules, activeVersion = DEFAULT_VERSION) =>
   (Array.isArray(rules) ? rules : []).map((rule) =>
@@ -27,17 +28,26 @@ const buildInitialRules = () => {
     if (!raw) return normalizeRules(defaultRulesJson, DEFAULT_VERSION);
     const parsed = JSON.parse(raw);
     return normalizeRules(parsed, DEFAULT_VERSION);
-  } catch {
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('clinicalStore:', error);
+    }
     return normalizeRules(defaultRulesJson, DEFAULT_VERSION);
   }
 };
 
 const persistRules = (rules) => {
+  if (persistTimeoutId) {
+    clearTimeout(persistTimeoutId);
+  }
+
+  persistTimeoutId = setTimeout(() => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
   } catch {
     // noop
-  }
+    }
+  }, 0);
 };
 
 export const ClinicalStoreProvider = ({ children }) => {
@@ -74,6 +84,89 @@ export const ClinicalStoreProvider = ({ children }) => {
       persistRules(next);
       return next;
     });
+  };
+
+  const addRuleFromBuilder = (ruleData) => {
+    const nextRule = ensureRuleVersionMetadata(
+      {
+        ...(ruleData || {}),
+        updatedAt: new Date().toISOString(),
+      },
+      { defaultVersion: activeNtsVersion, preserveCreatedAt: true },
+    );
+
+    setRules((prev) => {
+      const next = [...prev, nextRule];
+      persistRules(next);
+      return next;
+    });
+  };
+
+  const updateRuleFromBuilder = (ruleId, ruleData) => {
+    setRules((prev) => {
+      const next = prev.map((rule) => {
+        if (rule.id !== ruleId) return rule;
+
+        return ensureRuleVersionMetadata(
+          {
+            ...rule,
+            ...(ruleData || {}),
+            id: ruleId,
+            createdAt: rule.createdAt || ruleData?.createdAt || '',
+            updatedAt: new Date().toISOString(),
+          },
+          { defaultVersion: activeNtsVersion, preserveCreatedAt: true },
+        );
+      });
+
+      persistRules(next);
+      return next;
+    });
+  };
+
+  const deleteRule = (ruleId) => {
+    setRules((prev) => {
+      const next = prev.filter((rule) => rule.id !== ruleId);
+      persistRules(next);
+      return next;
+    });
+  };
+
+  const exportRulesToJSON = () => {
+    const jsonString = JSON.stringify(rules, null, 2);
+
+    try {
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const dateLabel = new Date().toISOString().slice(0, 10);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `dosifica-reglas-${dateLabel}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch {
+      // noop
+    }
+
+    return jsonString;
+  };
+
+  const importRulesFromJSON = (jsonString) => {
+    try {
+      const parsed = JSON.parse(jsonString);
+      if (!Array.isArray(parsed)) {
+        return { success: false, error: 'JSON inválido' };
+      }
+
+      const normalized = normalizeRules(parsed, activeNtsVersion);
+      setRules(normalized);
+      persistRules(normalized);
+      return { success: true, count: normalized.length };
+    } catch {
+      return { success: false, error: 'JSON inválido' };
+    }
   };
 
   const replaceRules = (nextRules) => {
@@ -120,6 +213,11 @@ export const ClinicalStoreProvider = ({ children }) => {
       addRule,
       updateRule,
       removeRule,
+      addRuleFromBuilder,
+      updateRuleFromBuilder,
+      deleteRule,
+      exportRulesToJSON,
+      importRulesFromJSON,
       replaceRules,
       toggleVersionActive,
       cloneVersion,

@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Tarjeta de estado reusable para KPIs del dashboard.

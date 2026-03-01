@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Opciones base para construir condiciones clínicas.

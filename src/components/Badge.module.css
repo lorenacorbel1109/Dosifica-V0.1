@@ -1,0 +1,18 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  font-weight: 700;
+}
+.sm { padding: 2px 8px; font-size: var(--font-size-xs); }
+.md { padding: 4px 10px; font-size: var(--font-size-sm); }
+
+.levelI1 { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+.levelI2 { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.levelI3 { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+.levelI4 { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+
+.categoryEmergencia { background: var(--color-critical-bg); color: var(--color-critical); border-color: #fecaca; }
+.categoryConsulta { background: var(--color-mild-bg); color: var(--color-mild); border-color: #a7f3d0; }
+.categoryPrograma { background: var(--color-warning-bg); color: var(--color-warning); border-color: #fde68a; }

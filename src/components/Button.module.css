@@ -1,0 +1,35 @@
+.button {
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  min-height: var(--touch-target);
+}
+
+.sm { min-height: var(--touch-target-sm); padding: 8px 12px; font-size: var(--font-size-sm); }
+.md { min-height: var(--touch-target); padding: 10px 14px; font-size: var(--font-size-base); }
+.lg { min-height: calc(var(--touch-target) + 4px); padding: 12px 18px; font-size: var(--font-size-lg); }
+
+.primary { background: var(--color-primary); color: #fff; }
+.secondary { background: var(--color-text-secondary); color: #fff; }
+.danger { background: var(--color-critical); color: #fff; }
+.ghost { background: transparent; color: var(--color-text-primary); }
+.outline { background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary); }
+
+.disabled { opacity: 0.5; cursor: not-allowed; }
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import { useAuditStore } from '../store/auditStore.jsx';
 import { useAppModeStore } from '../store/appModeStore.jsx';
 
@@ -8,6 +8,7 @@ import { useAppModeStore } from '../store/appModeStore.jsx';
 const AuditViewer = () => {
   const { auditLogs, clearAuditLogs, exportAuditJson } = useAuditStore();
   const { isSimulation } = useAppModeStore();
+  const [visibleCount, setVisibleCount] = useState(20);
 
   const handleExport = () => {
     const payload = exportAuditJson();
@@ -19,6 +20,9 @@ const AuditViewer = () => {
     anchor.click();
     URL.revokeObjectURL(url);
   };
+
+  const visibleAuditLogs = auditLogs.slice(0, visibleCount);
+  const canShowMore = auditLogs.length > visibleCount;
 
   return (
     <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
@@ -42,18 +46,30 @@ const AuditViewer = () => {
       {!auditLogs.length ? (
         <p style={{ color: '#777' }}>Sin registros de auditoría.</p>
       ) : (
-        <pre
-          style={{
-            margin: 0,
-            background: '#f8f8f8',
-            borderRadius: 8,
-            padding: 12,
-            overflowX: 'auto',
-            maxHeight: 360,
-          }}
-        >
-          {JSON.stringify(auditLogs, null, 2)}
-        </pre>
+        <section style={{ display: 'grid', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
+          {visibleAuditLogs.map((log) => (
+            <article key={log.auditId || `${log.timestamp}-${log.diagnosis || 'audit'}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
+              <div style={{ fontSize: 12, color: '#334155' }}>
+                {log.timestamp || '-'} · {log.establishmentId || 'N/A'}
+              </div>
+              <div><strong>{log.diagnosis || 'Sin diagnóstico'}</strong></div>
+              {Array.isArray(log.alerts) && log.alerts.length > 0 && (
+                <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                  {log.alerts.slice(0, 3).map((alert) => (
+                    <li key={alert} style={{ fontSize: 12 }}>{alert}</li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          ))}
+          {canShowMore && (
+            <div>
+              <button type="button" onClick={() => setVisibleCount((prev) => prev + 20)}>
+                Mostrar más
+              </button>
+            </div>
+          )}
+        </section>
       )}
     </section>
   );

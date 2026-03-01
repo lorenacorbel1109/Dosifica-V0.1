@@ -1,0 +1,18 @@
+{
+  "name": "Dosifica — Apoyo Clínico",
+  "short_name": "Dosifica",
+  "description": "Motor de reglas clínicas para establecimientos de salud I y II del Perú",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1a56db",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

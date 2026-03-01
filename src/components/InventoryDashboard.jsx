@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import SmartTable from './SmartTable.jsx';
 import AutoCompleteInput from './AutoCompleteInput.jsx';
 import { useEstablishmentsStore } from '../store/establishmentsStore.jsx';

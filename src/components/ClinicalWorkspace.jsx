@@ -1,18 +1,15 @@
-import React, { useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import RuleEditor from './RuleEditor.jsx';
 import ClinicalEvaluator from './ClinicalEvaluator.jsx';
+import OperatorGate from './OperatorGate.jsx';
 import InventoryManager from './InventoryManager.jsx';
 import EstablishmentSelector from './EstablishmentSelector.jsx';
-import AuditViewer from './AuditViewer.jsx';
-import VersionControlPanel from './VersionControlPanel.jsx';
-import DecisionPanel from './DecisionPanel.jsx';
 import AppModeSelector from './AppModeSelector.jsx';
-import SystemDashboard from './SystemDashboard.jsx';
 import ClinicalVariableManager from './ClinicalVariableManager.jsx';
-import NationalMedicationManager from './NationalMedicationManager.jsx';
 import MainLayout from './MainLayout.jsx';
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
+import BottomNav from './BottomNav.jsx';
 import { ClinicalStoreProvider, useClinicalStore } from '../store/clinicalStore.jsx';
 import { EstablishmentsStoreProvider, useEstablishmentsStore } from '../store/establishmentsStore.jsx';
 import { AuditStoreProvider } from '../store/auditStore.jsx';
@@ -20,20 +17,53 @@ import { DecisionLogStoreProvider } from '../store/decisionLogStore.jsx';
 import { AppModeStoreProvider, useAppModeStore } from '../store/appModeStore.jsx';
 import { VariablesStoreProvider } from '../store/variablesStore.jsx';
 import { NationalMedicationsStoreProvider } from '../store/nationalMedicationsStore.jsx';
+import { useMediaQuery } from '../hooks/useMediaQuery.js';
+
+const AuditViewer = lazy(() => import('./AuditViewer.jsx'));
+const VersionControlPanel = lazy(() => import('./VersionControlPanel.jsx'));
+const DecisionPanel = lazy(() => import('./DecisionPanel.jsx'));
+const NationalMedicationManager = lazy(() => import('./NationalMedicationManager.jsx'));
+const SystemDashboard = lazy(() => import('./SystemDashboard.jsx'));
+
+const SpinnerFallback = () => (
+  <div style={{ minHeight: 220, display: 'grid', placeItems: 'center' }}>
+    <div
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: '50%',
+        border: '3px solid #cbd5e1',
+        borderTopColor: '#1a56db',
+        animation: 'dosifica-spin 0.9s linear infinite',
+      }}
+    />
+    <style>{`@keyframes dosifica-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+  </div>
+);
 
 const WorkspaceContent = () => {
-  const { mode } = useAppModeStore();
+  const { mode, isProduction, operatorId } = useAppModeStore();
   const { activeNtsVersion } = useClinicalStore();
   const { activeEstablishment } = useEstablishmentsStore();
 
   const [activeSection, setActiveSection] = useState('dashboard');
   const [compactMode, setCompactMode] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isTablet = useMediaQuery('(min-width: 768px) and (max-width: 1024px)');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(isTablet);
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    setSidebarCollapsed(isTablet);
+  }, [isTablet]);
 
   const sections = {
     dashboard: <SystemDashboard filterText={searchTerm} />,
-    evaluacion: <ClinicalEvaluator onEditRelatedRules={() => setActiveSection('reglas')} />,
+    evaluacion: (
+      <>
+        {isProduction && !operatorId && <OperatorGate />}
+        <ClinicalEvaluator onEditRelatedRules={() => setActiveSection('reglas')} />
+      </>
+    ),
     reglas: <RuleEditor filterText={searchTerm} />,
     variables: <ClinicalVariableManager />,
     inventario: <InventoryManager />,
@@ -44,10 +74,19 @@ const WorkspaceContent = () => {
     establecimientos: <EstablishmentSelector />,
   };
 
+  const renderSection = sections[activeSection];
+
   return (
     <MainLayout
       compactMode={compactMode}
-      sidebar={<Sidebar activeSection={activeSection} onSelectSection={setActiveSection} collapsed={sidebarCollapsed} />}
+      sidebar={(
+        <Sidebar
+          activeSection={activeSection}
+          onSelectSection={setActiveSection}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
+        />
+      )}
       topbar={(
         <TopBar
           mode={mode}
@@ -60,9 +99,12 @@ const WorkspaceContent = () => {
           onSearchChange={setSearchTerm}
         />
       )}
+      bottomNav={<BottomNav activeSection={activeSection} onSelectSection={setActiveSection} />}
     >
       <AppModeSelector />
-      {sections[activeSection]}
+      <Suspense fallback={<SpinnerFallback />}>
+        {renderSection}
+      </Suspense>
     </MainLayout>
   );
 };

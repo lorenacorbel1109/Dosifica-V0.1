@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Tabla genérica de solo lectura para el dashboard.

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useEstablishmentsStore } from '../store/establishmentsStore.jsx';
 import { useNationalMedicationsStore } from '../store/nationalMedicationsStore.jsx';
 import AutoCompleteInput from './AutoCompleteInput.jsx';
