@@ -1,0 +1,65 @@
+[
+  {
+    "id": "PNM-001",
+    "genericName": "Sulfato ferroso",
+    "atcCode": "B03AA07",
+    "concentration": "125 mg/5 mL",
+    "pharmaceuticalForm": "jarabe",
+    "route": "VO",
+    "presentation": "frasco x 120 mL",
+    "minsaCategory": "Antianémicos",
+    "indications": [
+      "Anemia ferropénica",
+      "Suplementación de hierro"
+    ],
+    "active": true,
+    "allowedLevels": [
+      "I-1",
+      "I-2",
+      "I-3",
+      "I-4"
+    ]
+  },
+  {
+    "id": "PNM-002",
+    "genericName": "Albendazol",
+    "atcCode": "P02CA03",
+    "concentration": "400 mg",
+    "pharmaceuticalForm": "tableta",
+    "route": "VO",
+    "presentation": "blíster x 1 tableta",
+    "minsaCategory": "Antiparasitarios",
+    "indications": [
+      "Geohelmintiasis",
+      "Parasitosis intestinal"
+    ],
+    "active": true,
+    "allowedLevels": [
+      "I-1",
+      "I-2",
+      "I-3",
+      "I-4"
+    ]
+  },
+  {
+    "id": "PNM-003",
+    "genericName": "Paracetamol",
+    "atcCode": "N02BE01",
+    "concentration": "500 mg",
+    "pharmaceuticalForm": "tableta",
+    "route": "VO",
+    "presentation": "blíster x 10 tabletas",
+    "minsaCategory": "Analgésicos",
+    "indications": [
+      "Dolor leve a moderado",
+      "Fiebre"
+    ],
+    "active": true,
+    "allowedLevels": [
+      "I-1",
+      "I-2",
+      "I-3",
+      "I-4"
+    ]
+  }
+]

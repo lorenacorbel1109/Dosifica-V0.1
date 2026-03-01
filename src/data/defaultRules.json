@@ -1,0 +1,54 @@
+[
+  {
+    "id": "deshidratacion_moderada_adulto",
+    "pathology": "deshidratacion",
+    "conditions": [
+      { "field": "edad", "operator": "greaterThan", "value": 15 },
+      { "field": "signos", "operator": "includes", "value": "ojos hundidos" },
+      { "field": "signos", "operator": "includes", "value": "mucosas secas" }
+    ],
+    "diagnosis": "Deshidratación moderada",
+    "severity": "Moderada",
+    "treatment": {
+      "firstLine": "SRO",
+      "alternative": "ClNa 0.9%",
+      "doseFormula": "75 ml * peso",
+      "indications": [
+        "Administrar en 4 horas y reevaluar hidratación clínica.",
+        "Monitorizar diuresis y tolerancia oral."
+      ]
+    },
+    "levelRequired": ["I-1", "I-2", "I-3", "I-4"],
+    "requiredMedications": ["SRO"],
+    "requiresHospitalization": false,
+    "referralCriteria": "Referir si no mejora en 4 horas o hay deterioro hemodinámico.",
+    "ntsVersion": "NTS-2024",
+    "active": true,
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "anemia_leve_pediatrica",
+    "pathology": "anemia",
+    "conditions": [
+      { "field": "edad", "operator": "lessThan", "value": 12 },
+      { "field": "laboratorio.hemoglobina", "operator": "lessThan", "value": 11 }
+    ],
+    "diagnosis": "Anemia leve pediátrica",
+    "severity": "Leve",
+    "treatment": {
+      "firstLine": "Sulfato ferroso",
+      "alternative": "Hierro polimaltosado",
+      "dose": { "mgPorKg": 3, "frecuencia": "cada 24 horas", "dosisMaxima": 120 },
+      "indications": ["Suplementación diaria y control en 30 días."]
+    },
+    "levelRequired": ["I-1", "I-2", "I-3", "I-4"],
+    "requiredMedications": ["Sulfato ferroso"],
+    "requiresHospitalization": false,
+    "referralCriteria": "Referir si hemoglobina < 7 g/dL o signos de compromiso cardiopulmonar.",
+    "ntsVersion": "NTS-2024",
+    "active": true,
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  }
+]

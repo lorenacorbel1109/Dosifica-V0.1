@@ -1,0 +1,124 @@
+.appRoot {
+  min-height: 100vh;
+  background: #f3f6fb;
+  color: #1f2937;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.layoutGrid {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #0f172a;
+  color: #e5e7eb;
+  border-right: 1px solid #1f2937;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.mainArea {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  border-bottom: 1px solid #dbe2ef;
+  padding: 10px 16px;
+}
+
+.content {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #dbe2ef;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.card:hover {
+  border-color: #c9d5ea;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.cardHeader {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 10px 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.cardBody {
+  padding: 12px 14px;
+}
+
+.navItem {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: none;
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  transition: background-color 140ms ease, border-left-color 140ms ease;
+}
+
+.navItem:hover {
+  background: #16243d;
+}
+
+.navItemActive {
+  background: #1e293b;
+  border-left: 3px solid #2f6fed;
+}
+
+.iconWithTooltip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+}
+
+.compact .content {
+  padding: 8px;
+  gap: 8px;
+}
+
+.compact .cardHeader {
+  padding: 7px 10px;
+  font-size: 0.92rem;
+}
+
+.compact .cardBody {
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 1024px) {
+  .layoutGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    height: auto;
+    position: static;
+  }
+}
